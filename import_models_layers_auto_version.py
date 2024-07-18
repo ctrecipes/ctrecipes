@@ -136,7 +136,7 @@ def main(job: JobContext):
             del layer_act
 
             if c % 10 == 0:
-                print(c, ' images passed to Alexnet')
+                print(c, ' images passed to ' + model_name)
         print('Layers activations are hooked.')
 
     # free up the RAM
@@ -199,24 +199,24 @@ def main(job: JobContext):
     rdms_path = job.data['local_rdm_data']['rdms']
     nsd_rdms = np.load(rdms_path)  # Changed to np.load
 
-    alexnet_rdms_dir = job.outputPath.joinpath(f'{model_name}/rdms')
-    alexnet_rdm_files = sorted([f for f in os.listdir(alexnet_rdms_dir) if f.endswith('.npy')])
+    model_rdms_dir = job.outputPath.joinpath(f'{model_name}/rdms')
+    model_rdm_files = sorted([f for f in os.listdir(model_rdms_dir) if f.endswith('.npy')])
 
-    for idx, rdm_file in enumerate(alexnet_rdm_files):
-        alexnet_rdm_path = os.path.join(alexnet_rdms_dir, rdm_file)
-        alexnet_rdm = np.load(alexnet_rdm_path)
+    for idx, rdm_file in enumerate(model_rdm_files):
+        model_rdm_path = os.path.join(model_rdms_dir, rdm_file)
+        model_rdm = np.load(model_rdm_path)
 
-        # Check if alexnet_rdm is 100x100 and convert to upper triangle flattened
-        alexnet_rdm = np.squeeze(alexnet_rdm)
-        if alexnet_rdm.shape == (100, 100):
-            alexnet_rdm = alexnet_rdm[np.triu_indices(100, k=1)]
+        # Check if model_rdm is 100x100 and convert to upper triangle flattened
+        model_rdm = np.squeeze(model_rdm)
+        if model_rdm.shape == (100, 100):
+            model_rdm = model_rdm[np.triu_indices(100, k=1)]
 
-        # Calculate correlation between AlexNet RDM and NSD RDMs
+        # Calculate correlation between model RDM and NSD RDMs
         correlations = np.zeros(len(centers))
         for i, center in enumerate(centers):
             print('Correlation of center number: ', i)
             nsd_rdm = nsd_rdms[i]
-            correlations[i] = np.corrcoef(alexnet_rdm.flatten(), nsd_rdm.flatten())[0, 1]
+            correlations[i] = np.corrcoef(model_rdm.flatten(), nsd_rdm.flatten())[0, 1]
 
         volume = np.zeros(brain_mask_data.shape)
 
