@@ -1,5 +1,5 @@
-"""Volumetric map
-"""
+"""Title:Volumetric map"""
+"""ingredients: Model, Stimuli, Neuroimaging, Behavior"""
 
 from __future__ import annotations
 from datetime import datetime

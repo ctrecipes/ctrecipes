@@ -1,5 +1,6 @@
-"""Plot RDM for Multiple Arrangements tasks
-"""
+"""Title:Plot RDM for Multiple Arrangements tasks"""
+"""ingredients: Model, Stimuli, Neuroimaging, Behavior"""
+
 from __future__ import annotations
 from typing import TYPE_CHECKING
 import rsatoolbox, numpy
