@@ -8,6 +8,9 @@ import os
 import re
 import numpy as np
 import torchvision
+import timm
+from transformers import AutoModel
+from diffusers import DiffusionPipeline  
 
 from rsatoolbox.rdm import calc_rdm
 from rsatoolbox.data import Dataset
@@ -48,8 +51,17 @@ def extract_numbers(filename):
 def main(job: JobContext):
     # add the desired model
     model_name = job.data['model']['title']
-    git_id = job.data['model']['gitID']
-    model = torch.hub.load(git_id, model_name, pretrained=True)
+    model_source = job.data['model']['source']
+    if model_source == 'torchhub':
+        model_repo = job.data['model']['model_repo']
+        model = torch.hub.load(model_repo, model_name, pretrained=True)
+    elif model_source == 'timm':
+        model = timm.create_model(model_name, pretrained=True)
+    elif model_source == 'huggingface':
+        model = AutoModel.from_pretrained(model_name)
+    elif model_source == 'diffusers':
+        model = DiffusionPipeline.from_pretrained(model_name)
+
 
     # use eval mode for feeding the model
     model.eval()
@@ -87,6 +99,7 @@ def main(job: JobContext):
     first_dimension = len(job.data['images'])
     print('Size of stimulus set is ', first_dimension)
 
+    model_name = model_name.replace('/', '_')
     job.outputPath.joinpath(str(model_name))
     path = job.outputPath / str(model_name) / 'activations'
 
@@ -106,7 +119,7 @@ def main(job: JobContext):
         del mmapped_array
 
     # define the path to NSD100 images
-    path_to_images = str(job.outputPath / 'images')
+    path_to_images = str(job.outputPath / 'images') + '/special100'
 
     # get a list of all image files in the directory
     image_files = job.data['images']
@@ -185,19 +198,23 @@ def main(job: JobContext):
                                   dtype=np.float32, mode='r+', shape=(first_dimension, *list_of_dims[i]))
         del mmapped_array
 
-    # Loading brain mask
-    mask_path = job.data['local_rdm_data']['mask']
+    # Iterate over each subject in the dictionary
+for subject, paths in job.data['local_rdm_data'].items():
+    print(f"Processing {subject}")
+
+    # Loading brain mask for the subject
+    mask_path = paths['mask']
     brain_mask_nii = nib.load(mask_path)
     brain_mask_data = brain_mask_nii.get_fdata()
 
-    # Loading searchlight centers
-    center_path = job.data['local_rdm_data']['centers']
-    centers_linear = np.load(center_path)  # Changed to np.load
+    # Loading searchlight centers for the subject
+    center_path = paths['centers']
+    centers_linear = np.load(center_path)
     centers = np.array(np.unravel_index(centers_linear, brain_mask_data.shape)).T
 
-    # Loading NSD100 RDMS
-    rdms_path = job.data['local_rdm_data']['rdms']
-    nsd_rdms = np.load(rdms_path)  # Changed to np.load
+    # Loading NSD100 RDMS for the subject
+    rdms_path = paths['base']
+    nsd_rdms = np.load(rdms_path)
 
     model_rdms_dir = job.outputPath.joinpath(f'{model_name}/rdms')
     model_rdm_files = sorted([f for f in os.listdir(model_rdms_dir) if f.endswith('.npy')])
@@ -214,7 +231,7 @@ def main(job: JobContext):
         # Calculate correlation between model RDM and NSD RDMs
         correlations = np.zeros(len(centers))
         for i, center in enumerate(centers):
-            print('Correlation of center number: ', i)
+            print(f'Correlation of center number {i} for {subject}')
             nsd_rdm = nsd_rdms[i]
             correlations[i] = np.corrcoef(model_rdm.flatten(), nsd_rdm.flatten())[0, 1]
 
@@ -222,21 +239,26 @@ def main(job: JobContext):
 
         # Assign correlation values to corresponding centers
         for i, center in enumerate(centers):
-            print('Assigning corr val to center number: ', i)
+            print(f'Assigning corr val to center number {i} for {subject}')
             volume[tuple(center)] = correlations[i]
 
         # Create a new NIfTI image from the volume
         volume_nii = nib.Nifti1Image(volume, brain_mask_nii.affine, brain_mask_nii.header)
 
-        result_path = job.outputPath.joinpath(f'{model_name}/sub04')
+        # Define the output path for the results
+        result_path = job.outputPath.joinpath(f'{model_name}/{subject}')
         try:
-            os.makedirs(result_path)
+            os.makedirs(result_path, exist_ok=True)
         except OSError as e:
-            print(f"Creation of the directory {result_path} failed")
+            print(f"Creation of the directory {result_path} failed: {e}")
         else:
             print(f"Successfully created the directory {result_path}")
-        output_path = job.outputPath.joinpath(f'{model_name}/sub04/rdm_layer_{rdm_file}.nii.gz')
+
+        output_path = result_path.joinpath(f'rdm_layer_{rdm_file}.nii.gz')
         job.files.append(output_path)
 
+        # Save the NIfTI image to the output path
         nib.save(volume_nii, output_path)
+        print(f'Saved {output_path}')
+
 
